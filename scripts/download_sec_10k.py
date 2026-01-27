@@ -11,12 +11,82 @@ from sec_edgar_downloader import Downloader
 from loguru import logger
 
 DEFAULT_DOWNLOAD_DIR = "data"
-DEFAULT_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "NVDA", "TSLA", "JPM", "V", "JNJ",
-    "WMT", "PG", "MA", "UNH", "HD",
-    "DIS", "PYPL", "NFLX", "ADBE", "CRM"
+
+# S&P 500 Tickers (as of 2024)
+SP500_TICKERS = [
+    # Technology
+    "AAPL", "MSFT", "GOOGL", "GOOG", "META", "NVDA", "AVGO", "CSCO", "ADBE", "CRM",
+    "ORCL", "ACN", "IBM", "INTC", "AMD", "QCOM", "TXN", "NOW", "INTU", "AMAT",
+    "ADI", "LRCX", "MU", "KLAC", "SNPS", "CDNS", "MCHP", "APH", "MSI", "TEL",
+    "FTNT", "PANW", "CRWD", "IT", "CTSH", "ANSS", "KEYS", "ON", "FSLR", "HPQ",
+    "HPE", "NTAP", "WDC", "STX", "JNPR", "ZBRA", "TYL", "EPAM", "AKAM", "FFIV",
+    "SWKS", "QRVO", "ENPH", "SEDG", "TER", "PAYC", "MPWR", "NXPI", "GEN", "TRMB",
+
+    # Financials
+    "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "SPGI",
+    "CB", "MMC", "PGR", "AON", "CME", "ICE", "MCO", "MET", "AIG", "PRU",
+    "TRV", "ALL", "AFL", "AJG", "MSCI", "BK", "STT", "TROW", "NTRS", "FRC",
+    "USB", "PNC", "TFC", "FITB", "CFG", "RF", "HBAN", "KEY", "MTB", "CMA",
+    "ZION", "FDS", "MKTX", "CBOE", "NDAQ", "IVZ", "BEN", "LNC", "GL", "AIZ",
+    "L", "RE", "WRB", "CINF", "RJF", "SIVB", "SBNY", "DFS", "SYF", "COF",
+
+    # Healthcare
+    "UNH", "JNJ", "LLY", "PFE", "ABBV", "MRK", "TMO", "ABT", "DHR", "BMY",
+    "AMGN", "GILD", "MDT", "ELV", "CVS", "CI", "ISRG", "VRTX", "REGN", "SYK",
+    "BDX", "ZTS", "BSX", "HUM", "MRNA", "MCK", "HCA", "DXCM", "IDXX", "IQV",
+    "EW", "A", "MTD", "RMD", "ILMN", "ALGN", "BAX", "ZBH", "BIIB", "CAH",
+    "CNC", "MOH", "HOLX", "COO", "TECH", "WST", "DGX", "LH", "PKI", "BIO",
+    "CRL", "XRAY", "HSIC", "OGN", "VTRS", "CTLT", "INCY", "TFX", "STE", "WAT",
+
+    # Consumer Discretionary
+    "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "TJX", "BKNG", "CMG",
+    "ORLY", "AZO", "MAR", "HLT", "YUM", "DHI", "LEN", "ROST", "EBAY", "ETSY",
+    "DRI", "POOL", "BBY", "ULTA", "APTV", "GRMN", "LVS", "WYNN", "MGM", "CZR",
+    "RCL", "CCL", "NCLH", "EXPE", "F", "GM", "RIVN", "LCID", "NVR", "PHM",
+    "GPC", "KMX", "AAP", "AN", "LAD", "SAH", "BWA", "LEA", "RL", "TPR",
+    "VFC", "PVH", "HBI", "CPRI", "GPS", "PENN", "DKS", "HAS", "MAT", "WHR",
+
+    # Consumer Staples
+    "PG", "KO", "PEP", "COST", "WMT", "PM", "MO", "MDLZ", "CL", "EL",
+    "KMB", "GIS", "KHC", "HSY", "K", "SJM", "MKC", "HRL", "CAG", "CPB",
+    "CHD", "CLX", "TSN", "ADM", "BG", "KR", "SYY", "WBA", "TGT", "DG",
+    "DLTR", "KSS", "M", "JWN", "COTY", "BF.B", "STZ", "TAP", "SAM", "MNST",
+
+    # Industrials
+    "RTX", "HON", "UPS", "UNP", "CAT", "DE", "BA", "LMT", "GE", "MMM",
+    "GD", "NOC", "CSX", "NSC", "WM", "EMR", "ETN", "ITW", "PH", "ROK",
+    "CMI", "PCAR", "OTIS", "CARR", "JCI", "TT", "IR", "AME", "FAST", "RSG",
+    "VRSK", "CPRT", "CTAS", "PAYX", "ADP", "EFX", "LDOS", "LHX", "TDG", "HWM",
+    "WAB", "PWR", "DOV", "ODFL", "CHRW", "JBHT", "DAL", "LUV", "AAL", "UAL",
+    "FDX", "EXPD", "XPO", "SAIA", "GWW", "SNA", "SWK", "RHI", "NLOK", "NI",
+
+    # Energy
+    "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "PXD", "OXY",
+    "HES", "DVN", "FANG", "HAL", "BKR", "MRO", "APA", "EQT", "CTRA", "OVV",
+    "TRGP", "WMB", "KMI", "OKE", "KINDER", "ET",
+
+    # Utilities
+    "NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL", "PEG", "WEC",
+    "ED", "ES", "EIX", "DTE", "FE", "PPL", "AWK", "AEE", "CMS", "EVRG",
+    "LNT", "CNP", "NI", "ATO", "NRG", "PNW",
+
+    # Real Estate
+    "AMT", "PLD", "CCI", "EQIX", "PSA", "SPG", "O", "WELL", "DLR", "AVB",
+    "EQR", "VICI", "VTR", "ARE", "MAA", "UDR", "ESS", "INVH", "SUI", "ELS",
+    "CPT", "HST", "KIM", "REG", "FRT", "BXP", "VNO", "SLG", "CBRE", "JLL",
+
+    # Materials
+    "LIN", "APD", "SHW", "FCX", "ECL", "NEM", "NUE", "DD", "DOW", "PPG",
+    "VMC", "MLM", "CTVA", "FMC", "IFF", "ALB", "CF", "MOS", "EMN", "CE",
+    "IP", "PKG", "WRK", "AVY", "SEE", "BLL", "AMCR",
+
+    # Communication Services
+    "GOOG", "GOOGL", "META", "DIS", "NFLX", "CMCSA", "VZ", "T", "TMUS", "CHTR",
+    "ATVI", "EA", "TTWO", "WBD", "PARA", "FOX", "FOXA", "NWS", "NWSA", "OMC",
+    "IPG", "LYV", "MTCH", "PINS", "SNAP", "TWTR", "ZG", "RBLX"
 ]
+
+DEFAULT_TICKERS = SP500_TICKERS
 
 
 def main():
