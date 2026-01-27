@@ -11,6 +11,27 @@ GLM-4-9B (Teacher)  -->  Knowledge Distillation  -->  Mamba 1.4B (Student)
   4-bit quant                                           Fast inference
 ```
 
+## Distillation Methods
+
+### Method 1: Label Distillation (Simple)
+Teacher generates text responses, student learns to reproduce them.
+```bash
+python scripts/generate_teacher_labels.py --from-hf
+python scripts/train_distill.py --epochs 3
+```
+
+### Method 2: Logit Distillation (Advanced - Better Results)
+Teacher generates text + probability distributions (logits), student learns both.
+```bash
+python scripts/generate_teacher_logits.py --from-hf
+python scripts/train_distill_kd.py --epochs 3 --alpha 0.5
+```
+
+**Alpha parameter:**
+- `alpha=1.0`: Pure cross-entropy (same as Method 1)
+- `alpha=0.5`: 50% hard labels + 50% soft labels (recommended)
+- `alpha=0.0`: Pure KL divergence on soft labels
+
 ## Quick Start
 
 ### On RunPod (Recommended)
