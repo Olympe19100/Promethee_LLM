@@ -1,0 +1,24 @@
+# Core ML
+torch>=2.0.0
+transformers>=4.40.0
+datasets>=2.18.0
+accelerate>=0.27.0
+
+# Quantization (for teacher model)
+bitsandbytes>=0.42.0
+
+# Mamba SSM (optional - for faster inference)
+mamba-ssm>=1.2.0
+causal-conv1d>=1.2.0
+
+# Data processing
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+sec-edgar-downloader>=5.0.0
+
+# Utilities
+tqdm>=4.66.0
+loguru>=0.7.0
+
+# RunPod
+runpod>=1.6.0

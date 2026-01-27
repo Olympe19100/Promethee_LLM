@@ -1,0 +1,45 @@
+# Data
+data/sec-edgar-filings/
+data/*.jsonl
+*.jsonl
+
+# Models
+models/
+*.pt
+*.bin
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.eggs/
+*.egg-info/
+*.egg
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+runs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Checkpoints
+checkpoints/
+outputs/
