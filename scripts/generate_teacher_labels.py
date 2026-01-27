@@ -17,6 +17,7 @@ from loguru import logger
 DEFAULT_INPUT_FILE = "data/sec_corpus_clean.jsonl"
 DEFAULT_OUTPUT_FILE = "data/sec_training_data.jsonl"
 DEFAULT_MODEL = "THUDM/glm-4-9b-chat"
+HF_DATASET = "Arnaud19/sec-10k-corpus"  # HuggingFace dataset
 
 SYSTEM_PROMPT = """You are a senior financial analyst. Your task is to analyze the provided extract from an SEC 10-K filing.
 Output a valid JSON response with the following fields:
@@ -96,6 +97,24 @@ def get_teacher_analysis(model, tokenizer, text_chunk: str, max_context: int = 1
         return None
 
 
+def download_from_huggingface(output_path: str = DEFAULT_INPUT_FILE):
+    """Download dataset from HuggingFace Hub"""
+    from datasets import load_dataset
+
+    logger.info(f"Downloading dataset from HuggingFace: {HF_DATASET}")
+    dataset = load_dataset(HF_DATASET, split="train")
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+    logger.info(f"Saving to {output_path}...")
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for item in dataset:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    logger.info(f"Downloaded {len(dataset)} documents")
+    return output_path
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate teacher labels for LLM distillation")
     parser.add_argument("--input", type=str, default=DEFAULT_INPUT_FILE, help="Input JSONL file")
@@ -104,11 +123,18 @@ def main():
     parser.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization")
     parser.add_argument("--max-samples", type=int, default=None, help="Max samples to process")
     parser.add_argument("--min-length", type=int, default=1000, help="Min text length to process")
+    parser.add_argument("--from-hf", action="store_true", help="Download dataset from HuggingFace first")
     args = parser.parse_args()
+
+    # Download from HuggingFace if requested or if local file doesn't exist
+    if args.from_hf or not os.path.exists(args.input):
+        if not os.path.exists(args.input):
+            logger.info(f"Local file not found, downloading from HuggingFace...")
+        args.input = download_from_huggingface(args.input)
 
     if not os.path.exists(args.input):
         logger.error(f"Input file not found: {args.input}")
-        logger.info("Run process_sec_data.py first to create the corpus.")
+        logger.info("Use --from-hf to download from HuggingFace.")
         return
 
     model, tokenizer = load_model(args.model, use_4bit=not args.no_4bit)

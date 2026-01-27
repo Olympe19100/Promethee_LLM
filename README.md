@@ -13,13 +13,28 @@ GLM-4-9B (Teacher)  -->  Knowledge Distillation  -->  Mamba 1.4B (Student)
 
 ## Quick Start
 
+### On RunPod (Recommended)
+
+```bash
+# Clone repo
+git clone https://github.com/Olympe19100/Promethee_LLM.git
+cd Promethee_LLM
+pip install -r requirements.txt
+
+# Generate teacher labels (auto-downloads from HuggingFace)
+python scripts/generate_teacher_labels.py --from-hf
+
+# Train student model
+python scripts/train_distill.py --epochs 3
+```
+
 ### Local Setup
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Download SEC filings
+# Download SEC filings (optional - data already on HuggingFace)
 python scripts/download_sec_10k.py --tickers AAPL MSFT GOOGL --amount 5
 
 # Process into clean text
@@ -31,6 +46,13 @@ python scripts/generate_teacher_labels.py
 # Train student model
 python scripts/train_distill.py --epochs 3
 ```
+
+## Dataset
+
+Pre-processed SEC 10-K corpus available on HuggingFace:
+- **Dataset**: [Arnaud19/sec-10k-corpus](https://huggingface.co/datasets/Arnaud19/sec-10k-corpus)
+- **Size**: 4.8 GB (11,748 documents from 492 S&P 500 companies)
+- **Content**: Clean text extracted from SEC 10-K filings
 
 ### RunPod Deployment
 
