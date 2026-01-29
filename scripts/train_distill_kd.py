@@ -435,7 +435,7 @@ def main():
     logger.info(f"Using device: {device}")
     if device.type == "cuda":
         logger.info(f"GPU: {torch.cuda.get_device_name()}")
-        logger.info(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+        logger.info(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
     # Load student model and tokenizer
     logger.info(f"Loading student model: {args.student_model}")
