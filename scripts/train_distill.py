@@ -47,7 +47,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=1, help="Per-device batch size")
     parser.add_argument("--grad-accum", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
-    parser.add_argument("--max-length", type=int, default=2048, help="Max sequence length")
+    parser.add_argument("--max-length", type=int, default=1024, help="Max sequence length")
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     args = parser.parse_args()
 
@@ -56,11 +56,26 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     tokenizer.pad_token = tokenizer.eos_token
 
+    # Check Mamba fast kernels availability
+    try:
+        import mamba_ssm  # noqa: F401
+        logger.info("Mamba fast kernels: AVAILABLE")
+    except ImportError:
+        logger.warning(
+            "Mamba fast kernels NOT installed — falling back to slow path (high VRAM usage). "
+            "Install with: pip install causal-conv1d>=1.2.0 mamba-ssm>=1.2.0"
+        )
+
     model = MambaForCausalLM.from_pretrained(
         args.model,
         torch_dtype=torch.float16,
         device_map="auto"
     )
+
+    # Enable gradient checkpointing to reduce VRAM usage
+    if hasattr(model, 'gradient_checkpointing_enable'):
+        model.gradient_checkpointing_enable()
+        logger.info("Gradient checkpointing: enabled")
 
     # Load dataset
     if not os.path.exists(args.train_file):

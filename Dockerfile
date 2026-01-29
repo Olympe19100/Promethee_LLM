@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Mamba fast kernels (must be built with CUDA — installed separately for build cache)
+RUN pip install --no-cache-dir causal-conv1d>=1.2.0 mamba-ssm>=1.2.0 tensorboard
+
 # Copy application code
 COPY . .
 
