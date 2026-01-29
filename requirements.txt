@@ -1,5 +1,5 @@
-# Core ML
-torch>=2.0.0
+# Core ML — torch is pre-installed in the base image, do NOT override it
+# torch is provided by the Docker base image (pinned to CUDA version)
 transformers>=4.40.0
 datasets>=2.18.0
 accelerate>=0.27.0
@@ -7,9 +7,9 @@ accelerate>=0.27.0
 # Quantization (for teacher model)
 bitsandbytes>=0.42.0
 
-# Mamba SSM (optional - for faster inference)
-mamba-ssm>=1.2.0
-causal-conv1d>=1.2.0
+# Mamba SSM — installed separately in Dockerfile (requires CUDA build)
+# causal-conv1d>=1.2.0
+# mamba-ssm>=1.2.0
 
 # Data processing
 beautifulsoup4>=4.12.0
