@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=1, help="Per-device batch size")
     parser.add_argument("--grad-accum", type=int, default=8, help="Gradient accumulation steps")
-    parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate")
     parser.add_argument("--max-length", type=int, default=1024, help="Max sequence length")
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     args = parser.parse_args()
@@ -68,7 +68,7 @@ def main():
 
     model = MambaForCausalLM.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         device_map="auto"
     )
 
@@ -109,7 +109,7 @@ def main():
         num_train_epochs=args.epochs,
         save_strategy="steps",
         save_steps=500,
-        fp16=True,
+        bf16=True,
         optim="adamw_torch",
         report_to="tensorboard",
         logging_dir=f"{args.output_dir}/logs"
