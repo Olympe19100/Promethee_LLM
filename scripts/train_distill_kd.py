@@ -54,19 +54,43 @@ class VocabProjector:
         )
 
         # Build vocabulary mapping (teacher_id -> student_id)
-        logger.info("Building vocabulary projection map...")
+        # Strategy: decode each teacher token to text, then look up in student vocab.
+        # GLM-4 and Mamba use different internal token representations, so raw
+        # string matching (get_vocab keys) yields ~0% coverage. Decoding works.
+        logger.info("Building vocabulary projection map (decode-based)...")
         self.teacher_to_student = {}
-        self.coverage = 0
 
         teacher_vocab = self.teacher_tokenizer.get_vocab()
         student_vocab = self.student_tokenizer.get_vocab()
 
-        for token_str, teacher_id in tqdm(teacher_vocab.items(), desc="Mapping vocab"):
+        # First pass: direct string match (fast, catches common tokens)
+        for token_str, teacher_id in teacher_vocab.items():
             if token_str in student_vocab:
                 self.teacher_to_student[teacher_id] = student_vocab[token_str]
-                self.coverage += 1
 
-        logger.info(f"Vocabulary coverage: {self.coverage}/{len(teacher_vocab)} "
+        direct_matches = len(self.teacher_to_student)
+        logger.info(f"  Direct string matches: {direct_matches}/{len(teacher_vocab)}")
+
+        # Second pass: decode teacher token -> re-encode with student tokenizer
+        # This catches tokens where the internal representation differs
+        # but the decoded text is the same (e.g., byte-level BPE differences)
+        for teacher_id in tqdm(range(len(teacher_vocab)), desc="Mapping vocab (decode)"):
+            if teacher_id in self.teacher_to_student:
+                continue
+            try:
+                decoded = self.teacher_tokenizer.decode([teacher_id])
+                if not decoded or decoded.isspace():
+                    continue
+                # Encode with student tokenizer — if it maps to a single token, use it
+                student_ids = self.student_tokenizer.encode(decoded, add_special_tokens=False)
+                if len(student_ids) == 1:
+                    self.teacher_to_student[teacher_id] = student_ids[0]
+            except Exception:
+                continue
+
+        self.coverage = len(self.teacher_to_student)
+        logger.info(f"  Decode-based matches: {self.coverage - direct_matches}")
+        logger.info(f"  Total coverage: {self.coverage}/{len(teacher_vocab)} "
                     f"({100*self.coverage/len(teacher_vocab):.1f}%)")
 
         # Precompute lookup tensor: teacher_id -> student_id (-1 if unmapped)
@@ -441,12 +465,15 @@ def main():
     logger.info(f"Loading student model: {args.student_model}")
     student_tokenizer = AutoTokenizer.from_pretrained(args.student_model)
     student_tokenizer.pad_token = student_tokenizer.eos_token
-    student_vocab_size = len(student_tokenizer)
 
     model = MambaForCausalLM.from_pretrained(
         args.student_model,
         torch_dtype=torch.bfloat16
     ).to(device)
+
+    # Use model's actual vocab size (may differ from len(tokenizer) due to padding)
+    student_vocab_size = model.config.vocab_size
+    logger.info(f"Student vocab size: {student_vocab_size} (tokenizer: {len(student_tokenizer)})")
 
     # Enable gradient checkpointing
     if hasattr(model, 'gradient_checkpointing_enable'):
