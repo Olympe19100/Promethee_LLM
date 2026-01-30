@@ -318,10 +318,29 @@ class DistillationLoss(nn.Module):
         }
 
 
+def save_checkpoint(model, optimizer, scheduler, epoch, global_step,
+                    best_val_loss, output_dir, tokenizer, tag="latest"):
+    """Save a resumable checkpoint."""
+    ckpt_dir = os.path.join(output_dir, f"checkpoint-{tag}")
+    os.makedirs(ckpt_dir, exist_ok=True)
+    model.save_pretrained(ckpt_dir)
+    tokenizer.save_pretrained(ckpt_dir)
+    torch.save({
+        "epoch": epoch,
+        "global_step": global_step,
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "best_val_loss": best_val_loss,
+    }, os.path.join(ckpt_dir, "training_state.pt"))
+    logger.info(f"  Checkpoint saved: {ckpt_dir} (epoch={epoch}, step={global_step})")
+
+
 def train_epoch(model, dataloader, optimizer, scheduler, loss_fn,
                 vocab_projector, student_vocab_size, device, epoch,
-                grad_accum_steps=1, use_soft_labels=False):
-    """Train for one epoch with gradient accumulation"""
+                grad_accum_steps=1, use_soft_labels=False,
+                save_every=500, output_dir=None, tokenizer=None,
+                global_step=0, best_val_loss=float('inf')):
+    """Train for one epoch with gradient accumulation and periodic checkpointing."""
     model.train()
     total_loss = 0
     total_hard = 0
@@ -376,6 +395,7 @@ def train_epoch(model, dataloader, optimizer, scheduler, loss_fn,
         total_hard += losses["hard_loss"].item()
         total_soft += losses["soft_loss"].item()
         n_steps += 1
+        global_step += 1
 
         pbar.set_postfix({
             "loss": f"{losses['total_loss'].item():.4f}",
@@ -384,7 +404,14 @@ def train_epoch(model, dataloader, optimizer, scheduler, loss_fn,
             "lr": f"{scheduler.get_last_lr()[0]:.2e}"
         })
 
-    return total_loss / n_steps, total_hard / n_steps, total_soft / n_steps
+        # Periodic checkpoint (crash-safe)
+        if save_every > 0 and global_step % save_every == 0 and output_dir:
+            save_checkpoint(
+                model, optimizer, scheduler, epoch, global_step,
+                best_val_loss, output_dir, tokenizer, tag="latest"
+            )
+
+    return total_loss / n_steps, total_hard / n_steps, total_soft / n_steps, global_step
 
 
 @torch.no_grad()
@@ -558,17 +585,18 @@ def main():
 
     # Resume from checkpoint
     start_epoch = 1
+    global_step = 0
     best_val_loss = float('inf')
     if args.resume and os.path.exists(args.resume):
         ckpt_state = os.path.join(args.resume, "training_state.pt")
         if os.path.exists(ckpt_state):
             state = torch.load(ckpt_state, map_location=device)
-            model.load_state_dict(state["model"])
             optimizer.load_state_dict(state["optimizer"])
             scheduler.load_state_dict(state["scheduler"])
-            start_epoch = state["epoch"] + 1
+            start_epoch = state["epoch"]
+            global_step = state.get("global_step", 0)
             best_val_loss = state.get("best_val_loss", float('inf'))
-            logger.info(f"Resumed from epoch {state['epoch']}, best_val_loss={best_val_loss:.4f}")
+            logger.info(f"Resumed from epoch {start_epoch}, step {global_step}, best_val_loss={best_val_loss:.4f}")
         else:
             logger.info(f"Loading model weights from {args.resume}")
             model = MambaForCausalLM.from_pretrained(
@@ -595,11 +623,16 @@ def main():
 
     for epoch in range(start_epoch, args.epochs + 1):
         # Train
-        train_loss, train_hard, train_soft = train_epoch(
+        train_loss, train_hard, train_soft, global_step = train_epoch(
             model, train_loader, optimizer, scheduler,
             loss_fn, vocab_projector, student_vocab_size, device, epoch,
             grad_accum_steps=args.grad_accum,
-            use_soft_labels=args.use_soft_labels
+            use_soft_labels=args.use_soft_labels,
+            save_every=args.save_steps,
+            output_dir=args.output_dir,
+            tokenizer=student_tokenizer,
+            global_step=global_step,
+            best_val_loss=best_val_loss
         )
 
         # Validate
@@ -619,18 +652,10 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             patience_counter = 0
-            best_dir = os.path.join(args.output_dir, "best")
-            os.makedirs(best_dir, exist_ok=True)
-            model.save_pretrained(best_dir)
-            student_tokenizer.save_pretrained(best_dir)
-            # Save full training state for resume
-            torch.save({
-                "epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
-                "best_val_loss": best_val_loss,
-            }, os.path.join(best_dir, "training_state.pt"))
+            save_checkpoint(
+                model, optimizer, scheduler, epoch, global_step,
+                best_val_loss, args.output_dir, student_tokenizer, tag="best"
+            )
             logger.info(f"  -> New best model saved (val_loss={best_val_loss:.4f})")
         else:
             patience_counter += 1
