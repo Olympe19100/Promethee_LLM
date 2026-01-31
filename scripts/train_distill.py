@@ -130,6 +130,11 @@ def main():
         trainer.train()
 
     logger.info(f"Saving model to: {args.output_dir}")
+    # Ensure weight tying flag is saved in config.json so that
+    # from_pretrained() re-ties lm_head.weight to backbone.embeddings.weight.
+    # Without this, lm_head.weight is missing from the checkpoint (HF only
+    # saves one copy of tied tensors) and gets randomly initialized on reload.
+    model.config.tie_word_embeddings = True
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
 
