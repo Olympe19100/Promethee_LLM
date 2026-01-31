@@ -323,6 +323,7 @@ def save_checkpoint(model, optimizer, scheduler, epoch, global_step,
     """Save a resumable checkpoint."""
     ckpt_dir = os.path.join(output_dir, f"checkpoint-{tag}")
     os.makedirs(ckpt_dir, exist_ok=True)
+    model.config.tie_word_embeddings = True
     model.save_pretrained(ckpt_dir)
     tokenizer.save_pretrained(ckpt_dir)
     torch.save({
@@ -664,6 +665,7 @@ def main():
         # Save epoch checkpoint
         epoch_dir = os.path.join(args.output_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
+        model.config.tie_word_embeddings = True
         model.save_pretrained(epoch_dir)
 
         # Early stopping
@@ -673,6 +675,7 @@ def main():
 
     # Save final model
     logger.info(f"Saving final model to: {args.output_dir}")
+    model.config.tie_word_embeddings = True
     model.save_pretrained(args.output_dir)
     student_tokenizer.save_pretrained(args.output_dir)
 
