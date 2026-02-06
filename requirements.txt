@@ -15,6 +15,7 @@ bitsandbytes>=0.42.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
 sec-edgar-downloader>=5.0.0
+numpy>=1.24.0
 
 # Utilities
 tqdm>=4.66.0
@@ -22,3 +23,7 @@ loguru>=0.7.0
 
 # RunPod
 runpod>=1.6.0
+
+# ONNX export (optional)
+onnx>=1.14.0
+onnxruntime>=1.16.0

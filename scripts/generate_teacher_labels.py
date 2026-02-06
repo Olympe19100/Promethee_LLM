@@ -1,8 +1,10 @@
 """
-Generate training labels using a Teacher LLM (GLM-4-9B)
+Generate Training Labels for Prométhée using Teacher LLM (GLM-4-9B)
 
-This script processes SEC 10-K filings and generates structured analysis
-using a quantized teacher model for student model distillation.
+This script processes SEC 10-K filings and news and generates structured
+causal analysis for Prométhée model distillation.
+
+The Teacher generates causal reasoning chains that Prométhée will learn.
 """
 
 import json
@@ -15,17 +17,29 @@ from loguru import logger
 
 # Default configuration
 DEFAULT_INPUT_FILE = "data/sec_corpus_clean.jsonl"
-DEFAULT_OUTPUT_FILE = "data/sec_training_data.jsonl"
+DEFAULT_OUTPUT_FILE = "data/promethee_training_data.jsonl"
 DEFAULT_MODEL = "THUDM/glm-4-9b-chat"
 HF_DATASET = "Arnaud19/sec-10k-corpus"  # HuggingFace dataset
 
-SYSTEM_PROMPT = """You are a senior financial analyst. Your task is to analyze the provided extract from an SEC 10-K filing.
-Output a valid JSON response with the following fields:
-- sentiment: "Positive", "Negative", or "Neutral"
-- key_risks: A list of 3-5 key risk factors identified.
-- summary: A concise summary of the financial outlook or business status described.
-- reasoning: An explanation of why you assigned the sentiment.
-Ensure the output is pure JSON."""
+SYSTEM_PROMPT = """You are a senior financial analyst specializing in causal market analysis.
+Analyze the provided financial text and output valid JSON with causal reasoning:
+
+{
+  "sentiment": "bullish" | "bearish" | "neutral",
+  "impact_magnitude": "high" | "medium" | "low",
+  "causal_chain": [
+    "cause1 -> effect1",
+    "effect1 -> effect2"
+  ],
+  "key_factors": ["factor1", "factor2", "factor3"],
+  "risk_assessment": {
+    "main_risks": ["risk1", "risk2"],
+    "probability": "high" | "medium" | "low"
+  },
+  "reasoning": "Detailed explanation of the causal analysis..."
+}
+
+Focus on CAUSAL relationships: how events lead to market outcomes."""
 
 
 def load_model(model_name: str, use_4bit: bool = True):
@@ -116,7 +130,7 @@ def download_from_huggingface(output_path: str = DEFAULT_INPUT_FILE):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate teacher labels for LLM distillation")
+    parser = argparse.ArgumentParser(description="Generate causal training labels for Prométhée")
     parser.add_argument("--input", type=str, default=DEFAULT_INPUT_FILE, help="Input JSONL file")
     parser.add_argument("--output", type=str, default=DEFAULT_OUTPUT_FILE, help="Output JSONL file")
     parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Teacher model name")
@@ -125,6 +139,10 @@ def main():
     parser.add_argument("--min-length", type=int, default=1000, help="Min text length to process")
     parser.add_argument("--from-hf", action="store_true", help="Download dataset from HuggingFace first")
     args = parser.parse_args()
+
+    logger.info("=" * 60)
+    logger.info("🔥 Prométhée - Teacher Label Generation")
+    logger.info("=" * 60)
 
     # Download from HuggingFace if requested or if local file doesn't exist
     if args.from_hf or not os.path.exists(args.input):

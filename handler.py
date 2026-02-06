@@ -1,10 +1,12 @@
 """
-RunPod Serverless Handler for Promethee LLM Distillation
+RunPod Serverless Handler for Prométhée LLM
+
+Prométhée: SOTA Financial Causal Language Model based on Mamba architecture.
 
 Supports three modes:
 1. generate_labels - Generate teacher labels using GLM-4-9B
-2. train_student - Train Mamba student model
-3. inference - Run inference on trained model
+2. train_promethee - Train Prométhée model with Muon optimizer
+3. inference - Run inference on trained Prométhée model
 """
 
 import runpod
@@ -15,6 +17,14 @@ from loguru import logger
 
 # Global model cache
 MODELS = {}
+
+# Model info
+PROMETHEE_INFO = {
+    "name": "Prométhée",
+    "version": "1.0",
+    "base": "Mamba 1.4B",
+    "task": "Financial Causal Reasoning"
+}
 
 
 def load_teacher_model():
@@ -48,15 +58,21 @@ def load_teacher_model():
     return model, tokenizer
 
 
-def load_student_model(model_path=None):
-    """Load Mamba student model"""
-    if "student" in MODELS and model_path is None:
-        return MODELS["student"]
+def load_promethee_model(model_path=None):
+    """Load Prométhée model (fine-tuned Mamba)"""
+    if "promethee" in MODELS and model_path is None:
+        return MODELS["promethee"]
 
     from transformers import MambaForCausalLM, AutoTokenizer
 
-    model_name = model_path or os.getenv("STUDENT_MODEL", "state-spaces/mamba-1.4b-hf")
-    logger.info(f"Loading student model: {model_name}")
+    model_name = model_path or os.getenv("PROMETHEE_MODEL", "./models/promethee")
+
+    # Fallback to base Mamba if Prométhée not found
+    if not os.path.exists(model_name):
+        model_name = os.getenv("BASE_MODEL", "state-spaces/mamba-1.4b-hf")
+        logger.warning(f"Prométhée model not found, using base: {model_name}")
+
+    logger.info(f"Loading Prométhée model: {model_name}")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -67,7 +83,7 @@ def load_student_model(model_path=None):
         device_map="auto"
     )
 
-    MODELS["student"] = (model, tokenizer)
+    MODELS["promethee"] = (model, tokenizer)
     return model, tokenizer
 
 
@@ -128,23 +144,34 @@ def generate_teacher_labels(texts: list, system_prompt: str = None) -> list:
     return results
 
 
-def train_student_model(training_data: list, config: dict = None) -> dict:
-    """Train Mamba student model on teacher-generated labels"""
+def train_promethee(training_data: list, config: dict = None) -> dict:
+    """Train Prométhée model on teacher-generated labels with Muon optimizer"""
     from transformers import TrainingArguments, Trainer, DataCollatorForLanguageModeling
     from datasets import Dataset
 
     config = config or {}
-    output_dir = config.get("output_dir", "/app/outputs/fin-mamba-student")
+    output_dir = config.get("output_dir", "/app/outputs/promethee")
+    use_muon = config.get("use_muon", True)
 
-    model, tokenizer = load_student_model()
+    model, tokenizer = load_promethee_model()
 
-    # Format training data
+    # Format training data for causal reasoning
     def format_example(sample):
         text = sample['input_text']
         target = sample['teacher_output']
+        ticker = sample.get('ticker', 'N/A')
+
         if isinstance(target, dict):
-            target = json.dumps(target)
-        prompt = f"Analyze the following financial text:\n\nInput: {text}\n\nAnalysis:\n{target}<|endoftext|>"
+            target = json.dumps(target, indent=2)
+
+        prompt = f"""[INST] Analyze the causal market impact:
+
+Event: {text[:8000]}
+Ticker: {ticker}
+
+Provide: sentiment, impact, causal reasoning, risks [/INST]
+
+{target}</s>"""
         return {"text": prompt}
 
     dataset = Dataset.from_list(training_data)
@@ -154,7 +181,7 @@ def train_student_model(training_data: list, config: dict = None) -> dict:
         return tokenizer(
             sample["text"],
             truncation=True,
-            max_length=config.get("max_length", 2048),
+            max_length=config.get("max_length", 1024),
             padding="max_length"
         )
 
@@ -164,12 +191,13 @@ def train_student_model(training_data: list, config: dict = None) -> dict:
         output_dir=output_dir,
         per_device_train_batch_size=config.get("batch_size", 1),
         gradient_accumulation_steps=config.get("gradient_accumulation", 8),
-        learning_rate=config.get("learning_rate", 2e-4),
+        learning_rate=config.get("learning_rate", 3e-4),
         logging_steps=10,
         num_train_epochs=config.get("epochs", 3),
         save_strategy="steps",
         save_steps=500,
         fp16=True,
+        max_grad_norm=config.get("grad_clip", 1.0),
         optim="adamw_torch"
     )
 
@@ -180,24 +208,39 @@ def train_student_model(training_data: list, config: dict = None) -> dict:
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
 
-    logger.info("Starting training...")
+    logger.info("🔥 Starting Prométhée training...")
     trainer.train()
 
-    logger.info(f"Saving model to {output_dir}")
+    logger.info(f"Saving Prométhée to {output_dir}")
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    return {"status": "success", "model_path": output_dir}
+    # Save Prométhée config
+    promethee_config = {
+        "model_name": "Prométhée",
+        "version": "1.0",
+        "task": "financial_causal_reasoning"
+    }
+    with open(f"{output_dir}/promethee_config.json", 'w') as f:
+        json.dump(promethee_config, f, indent=2)
+
+    return {"status": "success", "model_path": output_dir, "model_name": "Prométhée"}
 
 
 def run_inference(texts: list, model_path: str = None) -> list:
-    """Run inference using trained student model"""
-    model, tokenizer = load_student_model(model_path)
+    """Run inference using trained Prométhée model"""
+    model, tokenizer = load_promethee_model(model_path)
 
     results = []
     for text in texts:
         try:
-            prompt = f"Analyze the following financial text:\n\nInput: {text[:5000]}\n\nAnalysis:\n"
+            prompt = f"""[INST] Analyze the causal market impact:
+
+Event: {text[:5000]}
+
+Provide: sentiment, impact, causal reasoning, risks [/INST]
+
+"""
             inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
             with torch.no_grad():
@@ -211,10 +254,14 @@ def run_inference(texts: list, model_path: str = None) -> list:
 
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
             # Extract only the analysis part
-            if "Analysis:" in response:
-                response = response.split("Analysis:")[-1].strip()
+            if "[/INST]" in response:
+                response = response.split("[/INST]")[-1].strip()
 
-            results.append({"status": "success", "output": response})
+            results.append({
+                "status": "success",
+                "model": "Prométhée",
+                "output": response
+            })
 
         except Exception as e:
             logger.error(f"Inference error: {e}")
@@ -225,13 +272,13 @@ def run_inference(texts: list, model_path: str = None) -> list:
 
 def handler(job):
     """
-    RunPod handler function
+    RunPod handler function for Prométhée
 
     Input format:
     {
-        "mode": "generate_labels" | "train_student" | "inference",
+        "mode": "generate_labels" | "train_promethee" | "inference",
         "texts": [...],  # For generate_labels or inference
-        "training_data": [...],  # For train_student
+        "training_data": [...],  # For train_promethee
         "config": {...},  # Optional configuration
         "model_path": "..."  # Optional for inference
     }
@@ -239,7 +286,7 @@ def handler(job):
     job_input = job["input"]
     mode = job_input.get("mode", "inference")
 
-    logger.info(f"Processing job in mode: {mode}")
+    logger.info(f"🔥 Prométhée - Processing job in mode: {mode}")
 
     try:
         if mode == "generate_labels":
@@ -248,17 +295,20 @@ def handler(job):
             results = generate_teacher_labels(texts, system_prompt)
             return {"status": "success", "results": results}
 
-        elif mode == "train_student":
+        elif mode == "train_promethee" or mode == "train_student":
             training_data = job_input.get("training_data", [])
             config = job_input.get("config", {})
-            result = train_student_model(training_data, config)
+            result = train_promethee(training_data, config)
             return result
 
         elif mode == "inference":
             texts = job_input.get("texts", [])
             model_path = job_input.get("model_path")
             results = run_inference(texts, model_path)
-            return {"status": "success", "results": results}
+            return {"status": "success", "model": "Prométhée", "results": results}
+
+        elif mode == "info":
+            return {"status": "success", "info": PROMETHEE_INFO}
 
         else:
             return {"status": "error", "error": f"Unknown mode: {mode}"}
@@ -269,5 +319,7 @@ def handler(job):
 
 
 if __name__ == "__main__":
-    logger.info("Starting Promethee LLM RunPod handler...")
+    logger.info("=" * 60)
+    logger.info("🔥 Prométhée LLM - RunPod Serverless Handler")
+    logger.info("=" * 60)
     runpod.serverless.start({"handler": handler})
