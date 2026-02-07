@@ -368,49 +368,146 @@ def create_training_sample(
     outcome: Dict,
     quant_context: Dict
 ) -> Dict:
-    """Create a unified training sample."""
+    """Create a unified training sample with COMPREHENSIVE professional analysis."""
 
     sentiment, impact = determine_sentiment_and_impact(outcome)
+    ret_1d = outcome['return_1d']
+    ret_5d = outcome['return_5d']
+    direction = outcome['direction']
+    volatility = outcome['volatility']
 
-    # Build structured teacher output
-    teacher_output = {
-        'sentiment': sentiment,
-        'impact_magnitude': impact,
-        'direction': outcome['direction'],
-        'expected_return': f"{outcome['return_1d']:+.2f}%",
-        'volatility_forecast': f"{outcome['volatility']:.2f}%",
-        'confidence': 'high' if abs(outcome['return_1d']) > 1.0 else 'medium'
-    }
+    # Build context descriptions
+    regime = quant_context.get('regime', 'Normal')
+    vix = quant_context.get('vix')
+    momentum = quant_context.get('ticker_momentum')
+    sector = quant_context.get('sector', 'Unknown')
+    market_corr = quant_context.get('market_correlation')
 
-    # Add causal factors based on context
-    causal_factors = []
-    if quant_context['regime']:
-        causal_factors.append(f"Market in {quant_context['regime']} regime")
-    if quant_context['ticker_momentum'] is not None:
-        mom = quant_context['ticker_momentum']
-        if abs(mom) > 0.01:
-            causal_factors.append(f"Stock {'positive' if mom > 0 else 'negative'} momentum ({mom*100:.1f}%)")
-    if quant_context['sector']:
-        causal_factors.append(f"Sector: {quant_context['sector']}")
+    # Determine conviction level
+    abs_ret = abs(ret_1d)
+    if abs_ret > 2.0:
+        conviction = "HIGH"
+        position_size = "Full position (2-3% portfolio)"
+    elif abs_ret > 1.0:
+        conviction = "MEDIUM-HIGH"
+        position_size = "Standard position (1-2% portfolio)"
+    elif abs_ret > 0.5:
+        conviction = "MEDIUM"
+        position_size = "Half position (0.5-1% portfolio)"
+    else:
+        conviction = "LOW"
+        position_size = "Small position or avoid (<0.5%)"
 
-    teacher_output['causal_factors'] = causal_factors if causal_factors else ["Event-driven move"]
+    # Build upside/downside scenarios
+    if direction == 'up':
+        upside_prob = 65 + min(abs_ret * 5, 20)
+        downside_prob = 100 - upside_prob
+    elif direction == 'down':
+        upside_prob = 35 - min(abs_ret * 5, 20)
+        downside_prob = 100 - upside_prob
+    else:
+        upside_prob = 50
+        downside_prob = 50
+
+    # Generate comprehensive professional analysis
+    teacher_analysis = f"""## MARKET IMPACT ASSESSMENT
+
+**Direction:** {direction.upper()}
+**Expected 1-day move:** {ret_1d:+.2f}%
+**Expected 5-day move:** {ret_5d:+.2f}%
+**Conviction Level:** {conviction}
+**Confidence:** {"High - clear catalyst with historical precedent" if abs_ret > 1.5 else "Medium - event-driven with uncertainty"}
+
+## FUNDAMENTAL IMPLICATIONS
+
+{"This event suggests potential earnings impact. " if source_type == 'news' else "Based on 10-K filing analysis, "}"""
+
+    if ret_1d > 0:
+        teacher_analysis += f"""The positive market reaction ({ret_1d:+.2f}%) indicates investors are pricing in improved fundamentals.
+- Revenue expectations: Likely revised upward
+- Margin outlook: Stable to improving
+- Valuation: Current multiples appear justified given growth trajectory"""
+    else:
+        teacher_analysis += f"""The negative market reaction ({ret_1d:+.2f}%) suggests concerns about fundamentals.
+- Revenue expectations: Risk of downward revision
+- Margin pressure: Potential headwinds identified
+- Valuation: May compress on reduced growth outlook"""
+
+    teacher_analysis += f"""
+
+## SECTOR & MACRO CONTEXT
+
+**Sector:** {sector}
+**Market Regime:** {regime}
+{"**VIX Level:** " + f"{vix:.1f}" if vix else ""}
+{"**Market Correlation:** " + f"{market_corr:.2f}" if market_corr else ""}
+
+{"In a " + regime + " regime, sector rotation dynamics suggest " if regime else ""}"""
+
+    if momentum and momentum > 0.01:
+        teacher_analysis += f"""the stock's positive momentum ({momentum*100:.1f}% over 20 days) provides tailwind for the directional move."""
+    elif momentum and momentum < -0.01:
+        teacher_analysis += f"""despite negative momentum ({momentum*100:.1f}% over 20 days), the event catalyst may override technical patterns."""
+    else:
+        teacher_analysis += """monitoring sector peers for confirmation of the thesis."""
+
+    teacher_analysis += f"""
+
+## RISK/REWARD PROFILE
+
+**Upside Scenario ({upside_prob:.0f}% probability):**
+- Target: {abs(ret_5d) * 1.5:+.1f}% over 5 days
+- Catalyst: Follow-through buying, positive analyst revisions
+
+**Downside Scenario ({downside_prob:.0f}% probability):**
+- Risk: {-abs(ret_5d) * 1.2:.1f}% drawdown
+- Triggers: Broader market weakness, sector rotation
+
+**Key Risks:**
+1. Market regime shift (monitor VIX)
+2. Sector-specific headwinds
+3. Liquidity constraints in volatile conditions
+
+**Tail Risk:** {"Elevated given " + regime + " regime" if regime in ['Crisis', 'Stress'] else "Standard market risk"}
+
+## CATALYST TIMELINE
+
+**Immediate (1-5 days):**
+- Event digestion and positioning adjustments
+- Analyst note flow and price target revisions
+
+**Medium-term (1-4 weeks):**
+- Sector rotation implications
+- Options expiration dynamics
+
+## ACTIONABLE RECOMMENDATION
+
+**View:** {"BULLISH" if direction == 'up' else "BEARISH" if direction == 'down' else "NEUTRAL"}
+**Position Size:** {position_size}
+**Entry:** {"At current levels" if abs_ret > 0.5 else "Wait for pullback confirmation"}
+**Stop-Loss:** {abs(ret_1d) * 2:.1f}% adverse move
+**Take-Profit Target:** {abs(ret_5d) * 1.3:.1f}% favorable move
+
+{"**Hedging:** Consider put protection given elevated volatility" if volatility > 2 else "**Hedging:** Standard position sizing is sufficient risk management"}"""
 
     # Format quantitative context
     quant_text = format_quant_context_text(quant_context)
 
     return {
-        'source_type': source_type,  # 'news' or 'sec_10k'
+        'source_type': source_type,
         'input_text': text[:8000],
         'quant_context': quant_text,
         'ticker': ticker,
         'date': date,
-        'teacher_output': json.dumps(teacher_output),
+        'teacher_output': teacher_analysis,
         'ground_truth': outcome,
         'quant_features': {
             'regime': quant_context.get('regime'),
             'vix': quant_context.get('vix'),
             'momentum': quant_context.get('ticker_momentum'),
-            'sector': quant_context.get('sector')
+            'sector': quant_context.get('sector'),
+            'volatility': quant_context.get('ticker_volatility'),
+            'market_correlation': quant_context.get('market_correlation')
         }
     }
 
