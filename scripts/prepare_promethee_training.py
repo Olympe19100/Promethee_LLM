@@ -628,6 +628,162 @@ def load_network_data(conn: sqlite3.Connection) -> Dict[str, Dict]:
 
 
 # =============================================================================
+# Geometric Feature Loaders
+# =============================================================================
+
+def load_geometric_tda(conn: sqlite3.Connection) -> Dict[Tuple[str, str], Dict]:
+    """Load TDA (topological) features."""
+    logger.info("Loading TDA geometric features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, ticker, betti_0, betti_1, betti_2,
+                   persistence_mean_0, persistence_max_0, persistence_entropy_0,
+                   persistence_mean_1, persistence_max_1, persistence_entropy_1,
+                   total_persistence, persistence_landscape_norm
+            FROM geom_tda
+        """)
+        tda = {}
+        for row in cursor:
+            date, ticker = str(row[0])[:10], row[1]
+            tda[(ticker, date)] = {
+                'betti_0': row[2],
+                'betti_1': row[3],
+                'betti_2': row[4],
+                'persistence_mean_0': row[5],
+                'persistence_max_0': row[6],
+                'persistence_entropy_0': row[7],
+                'persistence_mean_1': row[8],
+                'persistence_max_1': row[9],
+                'persistence_entropy_1': row[10],
+                'total_persistence': row[11],
+                'persistence_landscape_norm': row[12]
+            }
+        logger.info(f"Loaded {len(tda):,} TDA records")
+        return tda
+    except Exception as e:
+        logger.warning(f"TDA table not found or error: {e}")
+        return {}
+
+
+def load_geometric_ricci(conn: sqlite3.Connection) -> Dict[Tuple[str, str], float]:
+    """Load Ricci curvature per ticker."""
+    logger.info("Loading Ricci curvature features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, ticker, ricci_curvature
+            FROM geom_ricci
+        """)
+        ricci = {}
+        for row in cursor:
+            date, ticker = str(row[0])[:10], row[1]
+            ricci[(ticker, date)] = row[2]
+        logger.info(f"Loaded {len(ricci):,} Ricci curvature records")
+        return ricci
+    except Exception as e:
+        logger.warning(f"Ricci table not found or error: {e}")
+        return {}
+
+
+def load_geometric_network(conn: sqlite3.Connection) -> Dict[str, Dict]:
+    """Load network-level geometric features."""
+    logger.info("Loading network geometric features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, avg_curvature, std_curvature, min_curvature, max_curvature,
+                   network_density, avg_clustering, transitivity
+            FROM geom_network
+        """)
+        network = {}
+        for row in cursor:
+            date = str(row[0])[:10]
+            network[date] = {
+                'avg_curvature': row[1],
+                'std_curvature': row[2],
+                'min_curvature': row[3],
+                'max_curvature': row[4],
+                'network_density': row[5],
+                'avg_clustering': row[6],
+                'transitivity': row[7]
+            }
+        logger.info(f"Loaded {len(network):,} network geometry records")
+        return network
+    except Exception as e:
+        logger.warning(f"Network geometry table not found or error: {e}")
+        return {}
+
+
+def load_geometric_phase_space(conn: sqlite3.Connection) -> Dict[Tuple[str, str], Dict]:
+    """Load Takens embedding / phase space features."""
+    logger.info("Loading phase space features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, ticker, trajectory_length, recurrence_rate,
+                   determinism, entropy_rate, lyapunov_proxy
+            FROM geom_phase_space
+        """)
+        phase = {}
+        for row in cursor:
+            date, ticker = str(row[0])[:10], row[1]
+            phase[(ticker, date)] = {
+                'trajectory_length': row[2],
+                'recurrence_rate': row[3],
+                'determinism': row[4],
+                'entropy_rate': row[5],
+                'lyapunov_proxy': row[6]
+            }
+        logger.info(f"Loaded {len(phase):,} phase space records")
+        return phase
+    except Exception as e:
+        logger.warning(f"Phase space table not found or error: {e}")
+        return {}
+
+
+def load_geometric_fisher_rao(conn: sqlite3.Connection) -> Dict[Tuple[str, str], Dict]:
+    """Load Fisher-Rao distance features."""
+    logger.info("Loading Fisher-Rao features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, ticker, distance_to_centroid, distribution_mu, distribution_sigma
+            FROM geom_fisher_rao
+        """)
+        fisher = {}
+        for row in cursor:
+            date, ticker = str(row[0])[:10], row[1]
+            fisher[(ticker, date)] = {
+                'distance_to_centroid': row[2],
+                'distribution_mu': row[3],
+                'distribution_sigma': row[4]
+            }
+        logger.info(f"Loaded {len(fisher):,} Fisher-Rao records")
+        return fisher
+    except Exception as e:
+        logger.warning(f"Fisher-Rao table not found or error: {e}")
+        return {}
+
+
+def load_geometric_fundamental(conn: sqlite3.Connection) -> Dict[Tuple[str, str], Dict]:
+    """Load fundamental geometry (DEA efficiency) features."""
+    logger.info("Loading fundamental geometry features...")
+    try:
+        cursor = conn.execute("""
+            SELECT date, ticker, efficiency_score, hull_distance
+            FROM geom_fundamental
+        """)
+        fund = {}
+        for row in cursor:
+            date, ticker = str(row[0])[:10], row[1]
+            fund[(ticker, date)] = {
+                'efficiency_score': row[2],
+                'hull_distance': row[3]
+            }
+        logger.info(f"Loaded {len(fund):,} fundamental geometry records")
+        return fund
+    except Exception as e:
+        logger.warning(f"Fundamental geometry table not found or error: {e}")
+        return {}
+
+
+# =============================================================================
 # Market Outcome Computation
 # =============================================================================
 
@@ -710,7 +866,13 @@ def build_structured_input(
     ticker_sectors: Dict,
     pairwise: Dict,
     networks: Dict,
-    thresholds: DataDrivenThresholds
+    thresholds: DataDrivenThresholds,
+    geom_tda: Dict = None,
+    geom_ricci: Dict = None,
+    geom_network: Dict = None,
+    geom_phase: Dict = None,
+    geom_fisher: Dict = None,
+    geom_fund: Dict = None
 ) -> str:
     """Build structured input with data-driven classifications."""
 
@@ -909,7 +1071,125 @@ def build_structured_input(
         parts.append(f"</SECTOR_CONTEXT>")
 
     # =========================================================================
-    # 8. NEWS/EVENT
+    # 8. GEOMETRIC FEATURES (Manifold / TDA / Curvature)
+    # =========================================================================
+    geom_tda = geom_tda or {}
+    geom_ricci = geom_ricci or {}
+    geom_network = geom_network or {}
+    geom_phase = geom_phase or {}
+    geom_fisher = geom_fisher or {}
+    geom_fund = geom_fund or {}
+
+    # TDA Features
+    tda_data = geom_tda.get((ticker, date), {})
+    if tda_data:
+        parts.append(f"\n<GEOMETRY_TDA>")
+        parts.append(f"TOPOLOGY: Persistent homology of return manifold")
+        betti0 = tda_data.get('betti_0', 0)
+        betti1 = tda_data.get('betti_1', 0)
+        betti2 = tda_data.get('betti_2', 0)
+        parts.append(f"BETTI_NUMBERS: b0={betti0}, b1={betti1}, b2={betti2}")
+
+        pers_max = tda_data.get('persistence_max_0', 0)
+        pers_entropy = tda_data.get('persistence_entropy_0', 0)
+        parts.append(f"PERSISTENCE_MAX: {pers_max:.4f}")
+        parts.append(f"PERSISTENCE_ENTROPY: {pers_entropy:.4f}")
+
+        total_pers = tda_data.get('total_persistence', 0)
+        parts.append(f"TOTAL_PERSISTENCE: {total_pers:.4f}")
+
+        # Interpretation
+        if betti1 > 3:
+            parts.append(f"  [!] Multiple cycles detected - complex market dynamics")
+        if pers_entropy > 2:
+            parts.append(f"  [!] High topological entropy - regime instability")
+        parts.append(f"</GEOMETRY_TDA>")
+
+    # Ricci Curvature
+    ricci_val = geom_ricci.get((ticker, date))
+    net_geom = geom_network.get(date, {})
+    if ricci_val is not None or net_geom:
+        parts.append(f"\n<GEOMETRY_CURVATURE>")
+        if ricci_val is not None:
+            parts.append(f"RICCI_CURVATURE: {ricci_val:+.4f}")
+            if ricci_val < -0.3:
+                parts.append(f"  [!] NEGATIVE CURVATURE: Network bottleneck, systemic risk channel")
+            elif ricci_val > 0.3:
+                parts.append(f"  [i] POSITIVE CURVATURE: Well-connected cluster, diversification limited")
+
+        if net_geom:
+            avg_curv = net_geom.get('avg_curvature', 0)
+            transitivity = net_geom.get('transitivity', 0)
+            parts.append(f"NETWORK_AVG_CURVATURE: {avg_curv:+.4f}")
+            parts.append(f"TRANSITIVITY: {transitivity:.4f}")
+
+            if avg_curv < -0.2:
+                parts.append(f"  [!] MARKET-WIDE NEGATIVE CURVATURE: Systemic fragility elevated")
+        parts.append(f"</GEOMETRY_CURVATURE>")
+
+    # Phase Space (Takens)
+    phase_data = geom_phase.get((ticker, date), {})
+    if phase_data:
+        parts.append(f"\n<GEOMETRY_PHASE_SPACE>")
+        parts.append(f"DYNAMICS: Takens embedding reconstruction")
+
+        lyapunov = phase_data.get('lyapunov_proxy', 0)
+        recurrence = phase_data.get('recurrence_rate', 0)
+        determinism = phase_data.get('determinism', 0)
+        entropy_rate = phase_data.get('entropy_rate', 0)
+
+        parts.append(f"LYAPUNOV_PROXY: {lyapunov:+.4f}")
+        parts.append(f"RECURRENCE_RATE: {recurrence:.4f}")
+        parts.append(f"DETERMINISM: {determinism:.4f}")
+        parts.append(f"ENTROPY_RATE: {entropy_rate:.4f}")
+
+        if lyapunov > 0.5:
+            parts.append(f"  [!] HIGH LYAPUNOV: Chaotic dynamics, prediction horizon limited")
+        elif lyapunov < -0.2:
+            parts.append(f"  [i] LOW LYAPUNOV: Stable/predictable regime")
+
+        if recurrence > 0.3:
+            parts.append(f"  [i] HIGH RECURRENCE: Market pattern repeating")
+        parts.append(f"</GEOMETRY_PHASE_SPACE>")
+
+    # Fisher-Rao Distance
+    fisher_data = geom_fisher.get((ticker, date), {})
+    if fisher_data:
+        parts.append(f"\n<GEOMETRY_INFORMATION>")
+        parts.append(f"DISTRIBUTION: Fisher-Rao information geometry")
+
+        distance = fisher_data.get('distance_to_centroid', 0)
+        mu = fisher_data.get('distribution_mu', 0)
+        sigma = fisher_data.get('distribution_sigma', 0)
+
+        parts.append(f"FISHER_RAO_DISTANCE: {distance:.4f}")
+        parts.append(f"DISTRIBUTION_MU: {mu*100:+.2f}%")
+        parts.append(f"DISTRIBUTION_SIGMA: {sigma*100:.2f}%")
+
+        if distance > 0.5:
+            parts.append(f"  [!] FAR FROM MARKET CENTROID: Idiosyncratic behavior")
+        elif distance < 0.1:
+            parts.append(f"  [i] NEAR MARKET CENTROID: Beta-dominated returns")
+        parts.append(f"</GEOMETRY_INFORMATION>")
+
+    # Fundamental Geometry (DEA)
+    fund_data = geom_fund.get((ticker, date), {})
+    if fund_data:
+        parts.append(f"\n<GEOMETRY_FUNDAMENTAL>")
+        efficiency = fund_data.get('efficiency_score', 0)
+        hull_dist = fund_data.get('hull_distance', 0)
+
+        parts.append(f"EFFICIENCY_SCORE: {efficiency:.4f}")
+        parts.append(f"HULL_DISTANCE: {hull_dist:.4f}")
+
+        if efficiency > 0.8:
+            parts.append(f"  [i] NEAR EFFICIENT FRONTIER: Fundamental quality high")
+        elif efficiency < 0.3:
+            parts.append(f"  [!] FAR FROM FRONTIER: Fundamental inefficiency")
+        parts.append(f"</GEOMETRY_FUNDAMENTAL>")
+
+    # =========================================================================
+    # 9. NEWS/EVENT
     # =========================================================================
     parts.append(f"\n<NEWS>")
     parts.append(text[:4000])
@@ -931,7 +1211,11 @@ def build_semantic_output(
     sectors: Dict,
     ticker_sectors: Dict,
     pairwise: Dict,
-    thresholds: DataDrivenThresholds
+    thresholds: DataDrivenThresholds,
+    geom_tda: Dict = None,
+    geom_ricci: Dict = None,
+    geom_phase: Dict = None,
+    geom_fisher: Dict = None
 ) -> str:
     """Build semantic analysis output with data-driven classifications."""
 
@@ -1171,9 +1455,21 @@ def build_semantic_output(
     output.append("</ACTION>")
 
     # =========================================================================
-    # SAC VECTOR
+    # SAC VECTOR (includes geometric features)
     # =========================================================================
+    geom_tda = geom_tda or {}
+    geom_ricci = geom_ricci or {}
+    geom_phase = geom_phase or {}
+    geom_fisher = geom_fisher or {}
+
+    # Get geometric data
+    tda_data = geom_tda.get((ticker, date), {})
+    ricci_val = geom_ricci.get((ticker, date), 0)
+    phase_data = geom_phase.get((ticker, date), {})
+    fisher_data = geom_fisher.get((ticker, date), {})
+
     output.append("\n<SAC_VECTOR>")
+    # Classic features
     output.append(f"regime_mode: {mode}")
     output.append(f"risk_budget: {risk_budget:.2f}")
     output.append(f"vix: {vix if vix else 0}")
@@ -1195,6 +1491,18 @@ def build_semantic_output(
     output.append(f"pairs_opportunities: {len(coint_opps)}")
     output.append(f"tail_risk_count: {len(tail_risks)}")
     output.append(f"risk_level: {risk_level.lower()}")
+
+    # Geometric features
+    output.append(f"# Geometric manifold features")
+    output.append(f"betti_0: {tda_data.get('betti_0', 0)}")
+    output.append(f"betti_1: {tda_data.get('betti_1', 0)}")
+    output.append(f"persistence_entropy: {tda_data.get('persistence_entropy_0', 0):.4f}")
+    output.append(f"total_persistence: {tda_data.get('total_persistence', 0):.4f}")
+    output.append(f"ricci_curvature: {ricci_val if ricci_val else 0:.4f}")
+    output.append(f"lyapunov_proxy: {phase_data.get('lyapunov_proxy', 0):.4f}")
+    output.append(f"recurrence_rate: {phase_data.get('recurrence_rate', 0):.4f}")
+    output.append(f"determinism: {phase_data.get('determinism', 0):.4f}")
+    output.append(f"fisher_rao_distance: {fisher_data.get('distance_to_centroid', 0):.4f}")
     output.append("</SAC_VECTOR>")
 
     return "\n".join(output)
@@ -1247,7 +1555,13 @@ def process_news(
     start_date: str,
     end_date: str,
     max_samples: int,
-    sample_rate: float = 1.0
+    sample_rate: float = 1.0,
+    geom_tda: Dict = None,
+    geom_ricci: Dict = None,
+    geom_network: Dict = None,
+    geom_phase: Dict = None,
+    geom_fisher: Dict = None,
+    geom_fund: Dict = None
 ) -> List[Dict]:
     """Process news articles into training samples."""
 
@@ -1290,18 +1604,20 @@ def process_news(
         if content:
             text += f". {content[:3000]}"
 
-        # Build structured input
+        # Build structured input (with geometric features)
         structured_input = build_structured_input(
             ticker, date, text,
             daily_stats, regimes, sectors, ticker_sectors, pairwise, networks,
-            thresholds
+            thresholds,
+            geom_tda, geom_ricci, geom_network, geom_phase, geom_fisher, geom_fund
         )
 
-        # Build semantic output
+        # Build semantic output (with geometric features)
         semantic_output = build_semantic_output(
             ticker, date, outcome,
             daily_stats, regimes, sectors, ticker_sectors, pairwise,
-            thresholds
+            thresholds,
+            geom_tda, geom_ricci, geom_phase, geom_fisher
         )
 
         sample = create_training_sample(
@@ -1329,7 +1645,13 @@ def process_sec_filings(
     pairwise: Dict,
     networks: Dict,
     thresholds: DataDrivenThresholds,
-    max_samples: int
+    max_samples: int,
+    geom_tda: Dict = None,
+    geom_ricci: Dict = None,
+    geom_network: Dict = None,
+    geom_phase: Dict = None,
+    geom_fisher: Dict = None,
+    geom_fund: Dict = None
 ) -> List[Dict]:
     """Process SEC 10-K filings into training samples."""
 
@@ -1394,13 +1716,15 @@ def process_sec_filings(
         structured_input = build_structured_input(
             ticker, date, text,
             daily_stats, regimes, sectors, ticker_sectors, pairwise, networks,
-            thresholds
+            thresholds,
+            geom_tda, geom_ricci, geom_network, geom_phase, geom_fisher, geom_fund
         )
 
         semantic_output = build_semantic_output(
             ticker, date, outcome,
             daily_stats, regimes, sectors, ticker_sectors, pairwise,
-            thresholds
+            thresholds,
+            geom_tda, geom_ricci, geom_phase, geom_fisher
         )
 
         sample = create_training_sample(
@@ -1466,19 +1790,31 @@ def main():
     pairwise = load_pairwise_correlations(conn)
     networks = load_network_data(conn)
 
+    # Load geometric features (from compute_geometric_features.py)
+    logger.info("")
+    logger.info("Loading geometric features...")
+    geom_tda = load_geometric_tda(conn)
+    geom_ricci = load_geometric_ricci(conn)
+    geom_network = load_geometric_network(conn)
+    geom_phase = load_geometric_phase_space(conn)
+    geom_fisher = load_geometric_fisher_rao(conn)
+    geom_fund = load_geometric_fundamental(conn)
+
     logger.info("")
 
-    # Process news
+    # Process news (with geometric features)
     news_samples = process_news(
         conn, prices, daily_stats, regimes, sectors, ticker_sectors,
         pairwise, networks, thresholds,
-        args.start_date, args.end_date, args.max_news, args.news_sample_rate
+        args.start_date, args.end_date, args.max_news, args.news_sample_rate,
+        geom_tda, geom_ricci, geom_network, geom_phase, geom_fisher, geom_fund
     )
 
-    # Process SEC
+    # Process SEC (with geometric features)
     sec_samples = process_sec_filings(
         conn, prices, daily_stats, regimes, sectors, ticker_sectors,
-        pairwise, networks, thresholds, args.max_sec
+        pairwise, networks, thresholds, args.max_sec,
+        geom_tda, geom_ricci, geom_network, geom_phase, geom_fisher, geom_fund
     )
 
     conn.close()

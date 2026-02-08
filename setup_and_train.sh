@@ -112,11 +112,36 @@ if [ ! -f "data/eodhd_sp500.db" ]; then
 fi
 
 # =============================================================================
-# STEP 5: Prepare training data
+# STEP 5: Compute Geometric Features (TDA, Ricci, Takens, Fisher-Rao)
 # =============================================================================
 
 echo ""
-echo "[5/7] Preparing training data (DATA-DRIVEN)..."
+echo "[5/8] Computing geometric features..."
+echo "  - TDA (Persistent Homology)"
+echo "  - Ricci Curvature (Correlation Network)"
+echo "  - Takens Embedding (Phase Space)"
+echo "  - Fisher-Rao Distance (Information Geometry)"
+echo ""
+
+# Install geometric dependencies if needed
+pip install networkx ripser 2>/dev/null || echo "Some geometric libs may not be available, using fallbacks"
+
+python scripts/compute_geometric_features.py \
+    --db_path data/eodhd_sp500.db \
+    --start_date 2015-01-01 \
+    --end_date 2025-12-31 \
+    --window_days 60 \
+    --step_days 5
+
+echo ""
+echo "Geometric features computed and stored in database."
+
+# =============================================================================
+# STEP 6: Prepare training data (with geometric features)
+# =============================================================================
+
+echo ""
+echo "[6/8] Preparing training data (DATA-DRIVEN + GEOMETRIC)..."
 
 python scripts/prepare_promethee_training.py \
     --db_path data/eodhd_sp500.db \
@@ -156,11 +181,11 @@ print(f'Train: {split}, Val: {len(lines) - split}')
 "
 
 # =============================================================================
-# STEP 6: Train Promethee
+# STEP 7: Train Promethee
 # =============================================================================
 
 echo ""
-echo "[6/7] Training Promethee LLM..."
+echo "[7/8] Training Promethee LLM..."
 echo "  Epochs: $EPOCHS"
 echo "  Batch size: $BATCH_SIZE x $GRAD_ACCUM = $(($BATCH_SIZE * $GRAD_ACCUM))"
 echo "  Learning rate: $LR"
@@ -197,11 +222,11 @@ echo ""
 echo "Promethee training complete!"
 
 # =============================================================================
-# STEP 7: Train SVM Classifier
+# STEP 8: Train SVM Classifier
 # =============================================================================
 
 echo ""
-echo "[7/7] Training SVM classifier on embeddings..."
+echo "[8/8] Training SVM classifier on embeddings..."
 
 python scripts/train_svm_classifier.py \
     --model_path models/promethee_semantic \

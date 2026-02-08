@@ -30,6 +30,10 @@ pandas>=2.0.0
 tqdm>=4.66.0
 loguru>=0.7.0
 
+# Geometric / TDA
+networkx>=3.0.0
+ripser>=0.6.0
+
 # Visualization
 tensorboard>=2.15.0
 matplotlib>=3.8.0
